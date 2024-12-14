@@ -106,31 +106,76 @@ def pessoa_por_cpf(cpf):
 
 @app.route('/pessoa', methods=['POST'])
 def insere_atualiza_pessoa():
-
     log_message('info', '/pessoa POST')
-
+    
     data = request.get_json(force=True)
-    nome = data.get('nome')
-    sobrenome = data.get('sobrenome')
-    cpf = data.get('cpf')
-    datanascimento = data.get('data_nascimento')
+    
+    # Verifica se o payload é uma lista
+    if isinstance(data, list):
+        try:
+            with sqlite3.connect('crud.db') as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                for pessoa in data:
+                    nome = pessoa.get('nome')
+                    sobrenome = pessoa.get('sobrenome')
+                    cpf = pessoa.get('cpf')
+                    datanascimento = pessoa.get('data_nascimento')
 
-    try:
-        with sqlite3.connect('crud.db') as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute('SELECT 1 FROM pessoa WHERE cpf = ?', (cpf,))
-            exists = cursor.fetchone()
-            if exists:
-                cursor.execute('UPDATE pessoa SET nome=?, sobrenome=?, data_nascimento=? WHERE cpf=?', (nome, sobrenome, datanascimento, cpf))
+                    # Validação básica
+                    if not nome or not sobrenome or not cpf or not datanascimento:
+                        return jsonify(error="Todos os campos (nome, sobrenome, cpf, data_nascimento) são obrigatórios"), 400
+
+                    # Verifica se a pessoa já existe pelo CPF
+                    cursor.execute('SELECT 1 FROM pessoa WHERE cpf = ?', (cpf,))
+                    exists = cursor.fetchone()
+
+                    if exists:
+                        # Atualiza o registro existente
+                        cursor.execute('UPDATE pessoa SET nome=?, sobrenome=?, data_nascimento=? WHERE cpf=?', 
+                                       (nome, sobrenome, datanascimento, cpf))
+                    else:
+                        # Insere um novo registro
+                        cursor.execute('INSERT INTO pessoa (nome, sobrenome, cpf, data_nascimento) VALUES (?, ?, ?, ?)', 
+                                       (nome, sobrenome, cpf, datanascimento))
+
                 conn.commit()
-                return jsonify(success="Pessoa atualizada com sucesso"), 200
-            cursor.execute('INSERT INTO pessoa (nome, sobrenome, cpf, data_nascimento) VALUES (?, ?, ?, ?)', (nome, sobrenome, cpf, datanascimento))
-            conn.commit()
-            return jsonify(success="Pessoa inserida com sucesso"), 201
-    except Exception as e:
-        log_message('error', '/pessoa/POST')
-        return jsonify(error=str(e)), 500
+                return jsonify(success=f"{len(data)} pessoas processadas com sucesso"), 201
+        except Exception as e:
+            log_message('error', '/pessoa POST')
+            return jsonify(error=str(e)), 500
+    else:
+        # Caso o payload seja um único objeto
+        try:
+            nome = data.get('nome')
+            sobrenome = data.get('sobrenome')
+            cpf = data.get('cpf')
+            datanascimento = data.get('data_nascimento')
+
+            if not nome or not sobrenome or not cpf or not datanascimento:
+                return jsonify(error="Todos os campos (nome, sobrenome, cpf, data_nascimento) são obrigatórios"), 400
+
+            with sqlite3.connect('crud.db') as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                cursor.execute('SELECT 1 FROM pessoa WHERE cpf = ?', (cpf,))
+                exists = cursor.fetchone()
+
+                if exists:
+                    cursor.execute('UPDATE pessoa SET nome=?, sobrenome=?, data_nascimento=? WHERE cpf=?', 
+                                   (nome, sobrenome, datanascimento, cpf))
+                    conn.commit()
+                    return jsonify(success="Pessoa atualizada com sucesso"), 200
+                
+                cursor.execute('INSERT INTO pessoa (nome, sobrenome, cpf, data_nascimento) VALUES (?, ?, ?, ?)', 
+                               (nome, sobrenome, cpf, datanascimento))
+                conn.commit()
+                return jsonify(success="Pessoa inserida com sucesso"), 201
+        except Exception as e:
+            log_message('error', '/pessoa POST')
+            return jsonify(error=str(e)), 500
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
